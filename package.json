@@ -1,14 +1,52 @@
 {
-  "name": "care-local",
-  "version": "0.1.0",
-  "description": "Local-first desktop organizer for family caregivers",
-  "main": "src/main.js",
+  "name": "care-caregiver-organizer",
+  "version": "0.6.0",
   "private": true,
+  "description": "Local caregiver organizer",
+  "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "dev": "electron ."
+    "package:win": "electron-builder --win nsis",
+    "package:linux": "electron-builder --linux AppImage",
+    "package:win:linux": "bash packaging/build-installer-linux.sh"
   },
   "devDependencies": {
-    "electron": "^38.1.2"
+    "electron": "^38.2.0",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "com.care.organizer",
+    "productName": "CARE",
+    "files": [
+      "desktop.html",
+      "desktop.css",
+      "app.js",
+      "main.js",
+      "preload.js",
+      "assets/care-icon.png"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "assets/care-icon.ico"
+    },
+    "linux": {
+      "target": "AppImage",
+      "category": "Utility"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "CARE",
+      "artifactName": "CARE Setup ${version}.${ext}"
+    }
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
   }
 }
