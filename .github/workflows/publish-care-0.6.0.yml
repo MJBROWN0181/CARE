@@ -1,0 +1,46 @@
+name: Publish CARE 0.6.0 release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/publish-care-0.6.0.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: care-release-0.6.0
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download verified Windows installer
+        run: |
+          curl --fail --location --retry 3 --output "CARE Setup 0.6.0.exe" "https://care-caregiver.mjbrown0181.chatgpt.site/api/download"
+          echo "728da6bbfca5ea3bf1636a653d41f833fc7646b1f66d0ef4955a5d405710b382  CARE Setup 0.6.0.exe" | sha256sum --check
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view v0.6.0 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release v0.6.0 already exists."
+            exit 0
+          fi
+          cat > release-notes.md <<'NOTES'
+          CARE 0.6.0 is an early Windows desktop test release for family caregivers.
+
+          What's included:
+          - Caregiver and care recipient profiles with photos
+          - Appointments, tasks, documents, and saved email files
+          - Password-protected local vault and encrypted backup
+          - Desktop shortcut and setup guide
+
+          Download **CARE Setup 0.6.0.exe** below to install it on Windows 10 or 11. The installer is unsigned, so Windows may show a publisher warning. Keep an encrypted backup on a separate drive. Automatic updates are not active yet; later versions can be installed over this one without deleting the separate vault.
+
+          Report bugs or suggestions at https://care-caregiver.mjbrown0181.chatgpt.site/#feedback
+          NOTES
+          gh release create v0.6.0 "CARE Setup 0.6.0.exe" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "CARE 0.6.0 — Early Access" --notes-file release-notes.md
