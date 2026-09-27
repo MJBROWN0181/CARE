@@ -1,0 +1,14 @@
+{
+  "name": "care-local",
+  "version": "0.1.0",
+  "description": "Local-first desktop organizer for family caregivers",
+  "main": "src/main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^38.1.2"
+  }
+}
