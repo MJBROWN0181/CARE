@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>CARE — Caregiver Organizer</title>
+  <link rel="stylesheet" href="desktop.css" />
+</head>
+<body>
+  <div id="authScreen" class="auth-screen">
+    <form id="authForm" class="auth-card">
+      <div class="brand-mark" data-icon="heart"></div><h1 id="authTitle">Unlock CARE</h1>
+      <p id="authHint"></p><label for="authPassword">Vault password</label>
+      <input id="authPassword" type="password" required autocomplete="current-password" />
+      <p id="authError" role="alert"></p>
+      <button id="authSubmit" class="primary-btn" type="submit">Unlock</button>
+      <button id="restoreBtn" class="ghost-btn hidden" type="button">Restore encrypted backup</button>
+    </form>
+  </div>
+  <div class="app-shell hidden" id="appShell">
+    <aside class="sidebar">
+      <div class="brand"><div class="brand-mark" data-icon="heart"></div><div><div class="brand-name">CARE<span class="brand-period">.</span></div><div class="brand-subtitle">Caregiver organizer</div></div></div>
+      <div class="sidebar-label">OVERVIEW</div>
+      <nav id="nav">
+        <button class="nav-item active" data-page="dashboard"><span class="nav-icon" data-icon="home"></span><span>Dashboard</span></button>
+        <button class="nav-item" data-page="profiles"><span class="nav-icon" data-icon="users"></span><span>Care profiles</span></button>
+        <button class="nav-item" data-page="caregiver"><span class="nav-icon" data-icon="user"></span><span>My caregiver profile</span></button>
+        <div class="sidebar-label sidebar-label-inner">CARE RECORDS</div>
+        <button class="nav-item" data-page="documents"><span class="nav-icon" data-icon="file"></span><span>Documents</span></button>
+        <button class="nav-item" data-page="emails"><span class="nav-icon" data-icon="mail"></span><span>Saved emails</span></button>
+        <button class="nav-item" data-page="medical"><span class="nav-icon" data-icon="pulse"></span><span>Medical</span></button>
+        <button class="nav-item" data-page="finances"><span class="nav-icon" data-icon="wallet"></span><span>Finances</span></button>
+        <button class="nav-item" data-page="contacts"><span class="nav-icon" data-icon="contact"></span><span>Contacts</span></button>
+        <button class="nav-item" data-page="tasks"><span class="nav-icon" data-icon="check"></span><span>Tasks & reminders</span></button>
+        <button class="nav-item" data-page="appointments"><span class="nav-icon" data-icon="calendar"></span><span>Appointments</span></button>
+        <button class="nav-item" data-page="locations"><span class="nav-icon" data-icon="pin"></span><span>Where is everything?</span></button>
+      </nav>
+      <div class="sidebar-bottom">
+        <button class="nav-item" data-page="help"><span class="nav-icon" data-icon="help"></span><span>Help & settings</span></button>
+        <button class="caregiver-mini" data-page="caregiver" id="caregiverMini"><span class="mini-photo" id="miniPhoto"></span><span class="mini-copy"><strong id="miniName">Your profile</strong><small>Caregiver</small></span><span class="mini-chevron" data-icon="chevron"></span></button>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div class="search-wrap"><span data-icon="search"></span><input id="search" class="search" placeholder="Search care records..." aria-label="Search care records" /></div>
+        <div class="top-actions"><span class="viewing-label">VIEWING</span><select id="profilePicker" aria-label="Selected care profile"></select><button class="top-icon-btn" id="settingsBtn" aria-label="Help and settings" title="Help and settings" data-icon="settings"></button><button class="top-icon-btn" id="lockBtn" aria-label="Lock CARE" title="Lock CARE" data-icon="lock"></button></div>
+      </header>
+
+      <div id="updateBanner" class="update-banner hidden"><span data-icon="shield"></span><div><strong>CARE update ready</strong><small>A newer version has downloaded. Your vault stays on this computer.</small></div><button id="installUpdateBtn" class="primary-btn" type="button">Restart to update</button></div>
+      <section id="content"></section>
+    </main>
+  </div>
+
+  <div class="modal-backdrop hidden" id="entryModal">
+    <form class="modal" id="entryForm">
+      <h2 id="entryHeading">Add record</h2>
+      <label id="entryNameLabel" for="entryName">Title</label>
+      <input id="entryName" required maxlength="200" />
+      <div id="relationshipField"><label id="relationshipLabel" for="entryRelationship">Relationship</label><input id="entryRelationship" maxlength="100" /></div>
+      <div id="dateField"><label for="entryDate">Date / due date (optional)</label><input id="entryDate" type="date" /></div>
+      <div id="contactField"><label for="entryContact">Phone or email (optional)</label><input id="entryContact" maxlength="200" /></div>
+      <label id="entryDetailLabel" for="entryDetail">Details / notes</label>
+      <textarea id="entryDetail" rows="4" maxlength="10000"></textarea>
+      <div id="photoField"><div id="photoPreview" class="photo-preview"></div><div><button id="photoBtn" class="ghost-btn" type="button"><span data-icon="camera"></span> Choose photo</button><button id="removePhotoBtn" class="text-btn" type="button">Remove photo</button><small>PNG, JPEG, or WebP · up to 3 MB</small></div></div>
+      <div id="attachmentField"><button id="attachBtn" class="ghost-btn" type="button">Attach file (up to 5 MB)</button><small id="attachmentStatus"></small></div>
+      <div class="modal-actions"><button class="ghost-btn" id="cancelEntry" type="button">Cancel</button><button class="primary-btn" type="submit">Save</button></div>
+    </form>
+  </div>
+
+  <div class="wizard-backdrop hidden" id="wizard" role="dialog" aria-modal="true" aria-labelledby="wizardTitle">
+    <div class="wizard-card">
+      <div class="wizard-kicker">CARE SETUP GUIDE <span id="wizardCounter"></span></div>
+      <div class="wizard-progress" id="wizardProgress" aria-live="polite"></div>
+      <div class="wizard-symbol" id="wizardSymbol" aria-hidden="true"></div>
+      <h2 id="wizardTitle"></h2>
+      <p id="wizardText"></p>
+      <div class="wizard-tip" id="wizardTip"></div>
+      <div class="wizard-actions">
+        <button class="ghost-btn" id="wizardSkip" type="button">Skip guide</button>
+        <div class="wizard-nav">
+          <button class="ghost-btn" id="wizardBack" type="button">Back</button>
+          <button class="primary-btn" id="wizardNext" type="button">Next</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
