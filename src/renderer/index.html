@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CARE</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="brand"><span class="brand-mark">C</span><div><strong>CARE</strong><small>Caregiver Organizer</small></div></div>
+    <nav>
+      <button class="nav active" data-view="dashboard">Dashboard</button>
+      <button class="nav" data-view="people">People I Care For</button>
+      <button class="nav" data-view="appointments">Appointments</button>
+      <button class="nav" data-view="documents">Documents</button>
+      <button class="nav" data-view="reminders">Reminders</button>
+      <button class="nav" data-view="important">Important Information</button>
+    </nav>
+    <div class="privacy">Stored locally on this computer</div>
+  </aside>
+
+  <main>
+    <header><div><p class="eyebrow">FAMILY CARE ORGANIZER</p><h1 id="page-title">Dashboard</h1></div><button id="add-person" class="primary">+ Add Person</button></header>
+
+    <section id="dashboard" class="view active">
+      <div class="hero"><div><h2>Everything important, in one place.</h2><p>Keep appointments, paperwork, reminders and essential information organized for the people who depend on you.</p></div><div class="shield">Local & Private</div></div>
+      <div class="stats">
+        <article><span>People</span><strong id="people-count">0</strong></article>
+        <article><span>Upcoming Appointments</span><strong id="appointment-count">0</strong></article>
+        <article><span>Open Reminders</span><strong id="reminder-count">0</strong></article>
+        <article><span>Documents</span><strong id="document-count">0</strong></article>
+      </div>
+      <div class="grid">
+        <section class="panel"><div class="panel-head"><h3>People I Care For</h3><button class="link" data-go="people">View all</button></div><div id="people-preview" class="empty">Add your first person to begin organizing their care.</div></section>
+        <section class="panel"><div class="panel-head"><h3>Coming Up</h3><button class="link" data-go="appointments">Appointments</button></div><div id="upcoming-preview" class="empty">No upcoming appointments yet.</div></section>
+      </div>
+    </section>
+
+    <section id="people" class="view"><div class="section-head"><div><h2>People I Care For</h2><p>Create a separate organized profile for each person.</p></div><button class="primary add-person-secondary">+ Add Person</button></div><div id="people-list" class="cards"></div></section>
+    <section id="appointments" class="view"><div class="section-head"><div><h2>Appointments</h2><p>Doctor visits and other scheduled care.</p></div><button class="primary" id="add-appointment">+ Add Appointment</button></div><div id="appointments-list" class="cards"></div></section>
+    <section id="documents" class="view"><div class="section-head"><div><h2>Documents</h2><p>Track important paperwork and where originals are kept.</p></div><button class="primary" id="add-document">+ Add Document</button></div><div id="documents-list" class="cards"></div></section>
+    <section id="reminders" class="view"><div class="section-head"><div><h2>Reminders</h2><p>Keep due dates and important tasks from slipping through the cracks.</p></div><button class="primary" id="add-reminder">+ Add Reminder</button></div><div id="reminders-list" class="cards"></div></section>
+    <section id="important" class="view"><div class="section-head"><div><h2>Important Information</h2><p>Account details, contacts, property records, physical document locations and emergency information will live here.</p></div></div><div class="panel empty">This section is next in the build.</div></section>
+  </main>
+
+  <dialog id="modal"><form id="modal-form" method="dialog"><div class="modal-head"><h2 id="modal-title">Add Person</h2><button type="button" id="close-modal">×</button></div><div id="modal-fields"></div><div class="modal-actions"><button type="button" class="secondary" id="cancel-modal">Cancel</button><button class="primary" id="save-modal" value="default">Save</button></div></form></dialog>
+  <script src="app.js"></script>
+</body>
+</html>
