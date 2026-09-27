@@ -1,5 +1,7 @@
 # CARE desktop — version 0.6.0
 
+**Download CARE for Windows and send bug reports or suggestions:** https://care-caregiver.mjbrown0181.chatgpt.site
+
 CARE is a local caregiver organizer. This build is an early Windows desktop test version.
 
 ## Try the Windows app
