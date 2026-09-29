@@ -1,10 +1,14 @@
-const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, powerMonitor, session } = require('electron');
 const { randomBytes, scryptSync, createCipheriv, createDecipheriv } = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 
 let win, vault = null, password = null, updater = null;
 let updateState = { state: 'unconfigured' };
+function lockVault() {
+  vault = null; password = null;
+  if (win && !win.isDestroyed()) win.webContents.send('vault-locked');
+}
 if (typeof app.requestSingleInstanceLock === 'function' && !app.requestSingleInstanceLock()) app.quit();
 else app.on('second-instance', () => { if (win) { if (win.isMinimized()) win.restore(); win.focus(); } });
 const vaultPath = () => path.join(app.getPath('userData'), 'care-vault.json');
@@ -42,17 +46,15 @@ function setupUpdater() {
   if (process.platform !== 'win32' || !app.isPackaged || !fs.existsSync(path.join(process.resourcesPath, 'app-update.yml'))) return;
   try {
     updater = require('electron-updater').autoUpdater;
-    updater.autoDownload = true;
-    updater.autoInstallOnAppQuit = true;
+    updater.autoDownload = false;
+    updater.autoInstallOnAppQuit = false;
     updater.on('checking-for-update', () => updateUI({ state: 'checking' }));
-    updater.on('update-available', info => updateUI({ state: 'downloading', version: info.version }));
+    updater.on('update-available', info => updateUI({ state: 'available', version: info.version }));
     updater.on('download-progress', info => updateUI({ state: 'downloading', progress: Math.round(info.percent) }));
     updater.on('update-not-available', () => updateUI({ state: 'current', progress: null }));
     updater.on('update-downloaded', info => updateUI({ state: 'ready', version: info.version, progress: 100 }));
     updater.on('error', () => updateUI({ state: 'error', progress: null }));
     updateUI({ state: 'current' });
-    setTimeout(() => updater.checkForUpdates().catch(() => updateUI({ state: 'error' })), 15000);
-    setInterval(() => updater.checkForUpdates().catch(() => updateUI({ state: 'error' })), 6 * 60 * 60 * 1000).unref();
   } catch { updateUI({ state: 'error' }); }
 }
 function makeWindow() {
@@ -63,12 +65,21 @@ function makeWindow() {
   win.once('ready-to-show', () => win.show());
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   win.webContents.on('will-navigate', e => e.preventDefault());
-  win.on('closed', () => { vault = null; password = null; win = null; });
+  win.webContents.on('will-attach-webview', e => e.preventDefault());
+  win.on('closed', () => { lockVault(); win = null; });
 }
 app.whenReady().then(() => {
   if (process.platform === 'win32') app.setAppUserModelId('com.care.organizer');
+  session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
+  session.defaultSession.setPermissionCheckHandler(() => false);
+  session.defaultSession.webRequest.onBeforeRequest((details, callback) => {
+    callback({ cancel: !details.url.startsWith('file://') && !details.url.startsWith('data:') });
+  });
+  powerMonitor.on('lock-screen', lockVault);
+  powerMonitor.on('suspend', lockVault);
   ipcMain.handle('get-update-state', () => updateState);
   ipcMain.handle('check-updates', async () => { if (!updater) return updateState; try { await updater.checkForUpdates(); } catch { updateUI({ state: 'error' }); } return updateState; });
+  ipcMain.handle('download-update', async () => { if (!updater || updateState.state !== 'available') return false; updateUI({ state: 'downloading' }); try { await updater.downloadUpdate(); return true; } catch { updateUI({ state: 'error' }); return false; } });
   ipcMain.handle('install-update', () => { if (updater && updateState.state === 'ready') { updater.quitAndInstall(false, true); return true; } return false; });
   ipcMain.handle('status', () => ({ exists: fs.existsSync(vaultPath()) }));
   ipcMain.handle('create', (_e, secret) => {
@@ -88,7 +99,7 @@ app.whenReady().then(() => {
     if (serialized.length > 100_000_000) throw new Error('Vault data limit reached.');
     persist(value, password); vault = clone(value); return true;
   });
-  ipcMain.handle('lock', () => { vault = null; password = null; return true; });
+  ipcMain.handle('lock', () => { lockVault(); return true; });
   ipcMain.handle('backup', async () => {
     ensureUnlocked();
     const { canceled, filePath } = await dialog.showSaveDialog(win, { title: 'Save encrypted CARE backup', defaultPath: 'CARE-backup.care', filters: [{ name: 'CARE encrypted backup', extensions: ['care'] }] });
@@ -153,4 +164,4 @@ app.whenReady().then(() => {
   setupUpdater();
   app.on('activate', () => { if (!BrowserWindow.getAllWindows().length) makeWindow(); });
 });
-app.on('window-all-closed', () => { vault = null; password = null; if (process.platform !== 'darwin') app.quit(); });
+app.on('window-all-closed', () => { lockVault(); if (process.platform !== 'darwin') app.quit(); });
