@@ -1,11 +1,17 @@
-const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, Menu } = require('electron');
 const { randomBytes, scryptSync, createCipheriv, createDecipheriv } = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 
+// Every earlier release kept the vault in this folder. Pin it so renaming the package
+// or running from source (`npm start`) can never point CARE at a different, empty vault.
+// `--user-data-dir=<folder>` still selects a separate folder, e.g. for testing.
+app.setPath('userData', app.commandLine.getSwitchValue('user-data-dir') || path.join(app.getPath('appData'), 'care-caregiver-organizer'));
+
 let win, vault = null, password = null, updater = null;
 let updateState = { state: 'unconfigured' };
-if (typeof app.requestSingleInstanceLock === 'function' && !app.requestSingleInstanceLock()) app.quit();
+const primaryInstance = app.requestSingleInstanceLock();
+if (!primaryInstance) app.quit();
 else app.on('second-instance', () => { if (win) { if (win.isMinimized()) win.restore(); win.focus(); } });
 const vaultPath = () => path.join(app.getPath('userData'), 'care-vault.json');
 const clone = value => JSON.parse(JSON.stringify(value));
@@ -63,9 +69,18 @@ function makeWindow() {
   win.once('ready-to-show', () => win.show());
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   win.webContents.on('will-navigate', e => e.preventDefault());
+  // The app menu is removed, so offer cut/copy/paste on right-click.
+  win.webContents.on('context-menu', (_e, params) => {
+    const { isEditable, selectionText, editFlags } = params;
+    if (!isEditable && !selectionText) return;
+    const items = isEditable
+      ? [{ role: 'cut', enabled: editFlags.canCut }, { role: 'copy', enabled: editFlags.canCopy }, { role: 'paste', enabled: editFlags.canPaste }, { type: 'separator' }, { role: 'selectAll' }]
+      : [{ role: 'copy' }];
+    Menu.buildFromTemplate(items).popup({ window: win });
+  });
   win.on('closed', () => { vault = null; password = null; win = null; });
 }
-app.whenReady().then(() => {
+if (primaryInstance) app.whenReady().then(() => {
   if (process.platform === 'win32') app.setAppUserModelId('com.care.organizer');
   ipcMain.handle('get-update-state', () => updateState);
   ipcMain.handle('check-updates', async () => { if (!updater) return updateState; try { await updater.checkForUpdates(); } catch { updateUI({ state: 'error' }); } return updateState; });
@@ -100,8 +115,9 @@ app.whenReady().then(() => {
     const { canceled, filePaths } = await dialog.showOpenDialog(win, { title: 'Choose CARE backup', properties: ['openFile'], filters: [{ name: 'CARE encrypted backup', extensions: ['care'] }] });
     if (canceled) return false;
     const raw = fs.readFileSync(filePaths[0]);
-    const record = JSON.parse(raw.toString());
-    if (record.format !== 1 || !record.ciphertext || !record.salt || !record.iv || !record.tag) throw new Error('Invalid CARE backup.');
+    let record;
+    try { record = JSON.parse(raw.toString()); } catch { throw new Error('That file is not a CARE backup.'); }
+    if (!record || record.format !== 1 || !record.ciphertext || !record.salt || !record.iv || !record.tag) throw new Error('Invalid CARE backup.');
     fs.mkdirSync(path.dirname(vaultPath()), { recursive: true }); fs.writeFileSync(vaultPath(), raw, { flag: 'wx', mode: 0o600 }); return true;
   });
   ipcMain.handle('choose-photo', async () => {
@@ -135,7 +151,8 @@ app.whenReady().then(() => {
     ensureUnlocked();
     const { canceled, filePath } = await dialog.showSaveDialog(win, { defaultPath: path.basename(name || 'document'), title: 'Save document copy' });
     if (canceled) return false;
-    fs.writeFileSync(filePath, Buffer.from(content, 'base64'), { flag: 'wx' }); return true;
+    // The save dialog already asks before replacing an existing file.
+    fs.writeFileSync(filePath, Buffer.from(content, 'base64')); return true;
   });
   ipcMain.handle('calendar', async (_e, event) => {
     ensureUnlocked();
