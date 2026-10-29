@@ -1,4 +1,4 @@
-# CARE desktop — version 0.8.0
+# CARE desktop — version 0.8.1
 
 **Download CARE for Windows and send bug reports or suggestions:** https://care-caregiver.mjbrown0181.chatgpt.site
 
@@ -6,7 +6,7 @@ CARE is a local caregiver organizer. This build is an early Windows desktop test
 
 ## Try the Windows app
 
-Download `CARE Setup 0.8.0.exe` and open it on a Windows 10 or 11 PC. The installer creates a CARE desktop shortcut and a Start menu shortcut. Close CARE before installing; if CARE is in the system tray, right-click its tray icon and choose **Quit CARE**. Installing over 0.6.0 or 0.7.0 keeps your vault. Installing over 0.6.0 also removes its old Apps-list entry and Start menu folder so only one CARE entry remains.
+Download `CARE Setup 0.8.1.exe` and open it on a Windows 10 or 11 PC. The installer creates a CARE desktop shortcut and a Start menu shortcut. Close CARE before installing; if CARE is in the system tray, right-click its tray icon and choose **Quit CARE**. Installing over 0.6.0 or 0.7.0 keeps your vault. Installing over 0.6.0 also removes its old Apps-list entry and Start menu folder so only one CARE entry remains.
 
 On first launch, create a vault password with at least 12 characters and type it a second time to confirm it. There is no password reset; you can change the password in Help & Settings if you know the current one. CARE locks itself after 15 minutes without keyboard or mouse use. The setup guide then explains every main CARE section one step at a time. People upgrading from an earlier version see a "New in CARE" note on the dashboard with a link to the tour.
 
@@ -42,7 +42,7 @@ Requires Node.js 20 or newer. Run `npm ci` then `npm start` for local developmen
 
 Everything lives in CARE's user data folder (`%APPDATA%\care-caregiver-organizer`), separate from the installed program:
 
-- `care-vault.json`: the records, as AES-256-GCM encrypted JSON. The key is derived from the password with scrypt (N=16384, r=8, p=1) and a random 32-byte salt; each save uses a fresh salt and 12-byte nonce.
+- `care-vault.json`: the records, as AES-256-GCM encrypted JSON. The key is derived from the password with scrypt (N=131072, r=8, p=1) and a random 32-byte salt, once per unlock; while unlocked CARE keeps only the derived key, not the password. Each save uses a fresh 12-byte nonce, and changing the password picks a new salt. Vaults from before 0.8.0 (scrypt N=16384) are re-encrypted with the stronger setting on first unlock, after which those older versions of CARE can no longer open them.
 - `files/`: one AES-256-GCM encrypted file per attachment, using a random data key that is stored inside the encrypted vault. Changing the password re-encrypts only the vault. Vaults from 0.7.0 and earlier, which kept attachments inside the vault, are converted automatically on first unlock.
 - `settings.json` and `reminders.json`: unencrypted. They hold only app preferences, the backup folder path, and reminder times with generic wording ("You have an appointment tomorrow at 2:00 PM"), never names or record details.
 

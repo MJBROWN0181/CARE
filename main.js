@@ -1,5 +1,5 @@
-const { app, BrowserWindow, ipcMain, dialog, Menu, Tray, Notification, nativeImage, protocol } = require('electron');
-const { randomBytes, scryptSync, createCipheriv, createDecipheriv } = require('node:crypto');
+const { app, BrowserWindow, ipcMain, dialog, Menu, Tray, Notification, nativeImage, protocol, session } = require('electron');
+const { randomBytes, scryptSync, createCipheriv, createDecipheriv, timingSafeEqual } = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -10,7 +10,7 @@ app.setPath('userData', app.commandLine.getSwitchValue('user-data-dir') || path.
 // Attachments are shown in a viewer window from memory through this scheme, never from a temp file.
 protocol.registerSchemesAsPrivileged([{ scheme: 'care-file', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }]);
 
-let win, tray = null, quitting = false, vault = null, password = null, updater = null;
+let win, tray = null, quitting = false, vault = null, keyring = null, updater = null;
 let updateState = { state: 'unconfigured' };
 const startHidden = process.argv.includes('--hidden');
 const primaryInstance = app.requestSingleInstanceLock();
@@ -33,26 +33,36 @@ function writeAtomic(target, data) {
   fs.writeFileSync(tmp, data, { mode: 0o600 });
   fs.renameSync(tmp, target);
 }
-function encrypt(value, secret) {
-  const salt = randomBytes(32), iv = randomBytes(12);
-  const key = scryptSync(secret, salt, 32, { N: 16384, r: 8, p: 1 });
-  const cipher = createCipheriv('aes-256-gcm', key, iv);
+// The password is stretched with scrypt once per unlock; while unlocked CARE keeps only the
+// derived key (the "keyring"), never the password. Each save uses a fresh random nonce.
+// Vaults written before 0.8.0 used N=16384 and no `kdf` field; they are upgraded on unlock.
+const KDF = { N: 131072, r: 8, p: 1 };
+const LEGACY_KDF = { N: 16384, r: 8, p: 1 };
+const deriveKey = (secret, salt, kdf) => scryptSync(secret, salt, 32, { ...kdf, maxmem: 256 * 1024 * 1024 });
+function newKeyring(secret) { const salt = randomBytes(32); return { salt, kdf: KDF, key: deriveKey(secret, salt, KDF) }; }
+function seal(value, ring) {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv('aes-256-gcm', ring.key, iv);
   const encrypted = Buffer.concat([cipher.update(JSON.stringify(value)), cipher.final()]);
-  return { format: 1, salt: salt.toString('base64'), iv: iv.toString('base64'), tag: cipher.getAuthTag().toString('base64'), ciphertext: encrypted.toString('base64') };
+  return { format: 1, kdf: ring.kdf, salt: ring.salt.toString('base64'), iv: iv.toString('base64'), tag: cipher.getAuthTag().toString('base64'), ciphertext: encrypted.toString('base64') };
 }
-function decrypt(record, secret) {
+function open(record, secret) {
   if (record.format !== 1) throw new Error('Unsupported vault format');
-  const key = scryptSync(secret, Buffer.from(record.salt, 'base64'), 32, { N: 16384, r: 8, p: 1 });
-  const decipher = createDecipheriv('aes-256-gcm', key, Buffer.from(record.iv, 'base64'));
+  const kdf = record.kdf || LEGACY_KDF;
+  // Bound the parameters so a tampered file can't make unlocking hang or exhaust memory.
+  if (![16384, 32768, 65536, 131072, 262144].includes(kdf.N) || kdf.r !== 8 || kdf.p !== 1) throw new Error('Unsupported vault format');
+  const ring = { salt: Buffer.from(record.salt, 'base64'), kdf: { N: kdf.N, r: kdf.r, p: kdf.p } };
+  ring.key = deriveKey(secret, ring.salt, ring.kdf);
+  const decipher = createDecipheriv('aes-256-gcm', ring.key, Buffer.from(record.iv, 'base64'));
   decipher.setAuthTag(Buffer.from(record.tag, 'base64'));
-  return JSON.parse(Buffer.concat([decipher.update(Buffer.from(record.ciphertext, 'base64')), decipher.final()]).toString());
+  return { value: JSON.parse(Buffer.concat([decipher.update(Buffer.from(record.ciphertext, 'base64')), decipher.final()]).toString()), ring };
 }
 const validRecord = r => !!r && r.format === 1 && !!r.ciphertext && !!r.salt && !!r.iv && !!r.tag;
-function persist(value, secret) { writeAtomic(vaultPath(), JSON.stringify(encrypt(value, secret))); }
+function persist(value) { writeAtomic(vaultPath(), JSON.stringify(seal(value, keyring))); }
 function checkSecret(secret) {
   if (typeof secret !== 'string' || secret.length < 12) throw new Error('Use at least 12 characters for the vault password.');
 }
-function ensureUnlocked() { if (!vault || !password) throw new Error('Unlock CARE first.'); }
+function ensureUnlocked() { if (!vault || !keyring) throw new Error('Unlock CARE first.'); }
 // The renderer never needs the file key; save() puts it back.
 const forRenderer = v => { const c = clone(v); delete c.dataKey; return c; };
 
@@ -144,11 +154,14 @@ function restoreBackup(source) {
     try {
       if (size >= 12 && readExactly(fd, 8, 0).equals(BACKUP_MAGIC)) {
         const headerLength = readExactly(fd, 4, 8).readUInt32LE(0);
+        if (headerLength > size - 12) throw new Error('bad header');
         const header = JSON.parse(readExactly(fd, headerLength, 12).toString());
         record = header.vault; files = Array.isArray(header.files) ? header.files : []; offset = 12 + headerLength;
-      } else record = JSON.parse(fs.readFileSync(source, 'utf8'));
+      } else if (size <= 200_000_000) record = JSON.parse(fs.readFileSync(source, 'utf8'));
     } catch { throw new Error('That file is not a CARE backup.'); }
-    if (!validRecord(record) || !files.every(f => validFileId(f.id) && Number.isInteger(f.size) && f.size >= 0)) throw new Error('Invalid CARE backup.');
+    if (!validRecord(record) || !files.every(f => validFileId(f.id) && Number.isSafeInteger(f.size) && f.size >= 0)) throw new Error('Invalid CARE backup.');
+    // Check the listed sizes against the real file before allocating anything for them.
+    if (offset + files.reduce((sum, f) => sum + f.size, 0) > size) throw new Error('This backup file is incomplete.');
     fs.mkdirSync(filesDir(), { recursive: true });
     for (const f of files) { fs.writeFileSync(blobPath(f.id), readExactly(fd, f.size, offset), { mode: 0o600 }); offset += f.size; }
     fs.writeFileSync(vaultPath(), JSON.stringify(record), { flag: 'wx', mode: 0o600 });
@@ -246,7 +259,8 @@ const viewers = new Set(), viewTokens = new Map();
 const VIEW_TYPES = { pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', txt: 'text/plain; charset=utf-8', eml: 'text/plain; charset=utf-8', csv: 'text/plain; charset=utf-8' };
 const viewType = name => VIEW_TYPES[path.extname(String(name || '')).slice(1).toLowerCase()];
 function lockVault(notify = false) {
-  vault = null; password = null; pendingFiles.clear();
+  keyring?.key.fill(0);
+  vault = null; keyring = null; pendingFiles.clear();
   for (const viewer of viewers) viewer.close();
   viewTokens.clear();
   if (notify) sendToWindow('locked');
@@ -327,6 +341,9 @@ app.on('before-quit', () => { quitting = true; });
 if (primaryInstance) app.whenReady().then(() => {
   if (process.platform === 'win32') app.setAppUserModelId('com.care.organizer');
   loadSettings(); loadReminders();
+  // CARE never needs camera, microphone, location, or other web permissions; refuse them all.
+  session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
+  session.defaultSession.setPermissionCheckHandler(() => false);
   protocol.handle('care-file', request => {
     const entry = viewTokens.get(new URL(request.url).pathname.slice(1));
     if (!entry) return new Response('This file is no longer open.', { status: 404 });
@@ -340,12 +357,16 @@ if (primaryInstance) app.whenReady().then(() => {
     if (fs.existsSync(vaultPath())) throw new Error('A CARE vault already exists.');
     checkSecret(secret);
     const initial = { caregiver: null, profiles: [], items: [], version: 1, dataKey: randomBytes(32).toString('base64') };
-    persist(initial, secret); vault = initial; password = secret; return forRenderer(vault);
+    keyring = newKeyring(secret); persist(initial); vault = initial; return forRenderer(vault);
   });
   ipcMain.handle('unlock', (_e, secret) => {
-    try { vault = decrypt(JSON.parse(fs.readFileSync(vaultPath(), 'utf8')), secret); password = secret; }
-    catch { vault = null; password = null; throw new Error('Could not unlock. Check the password or vault file.'); }
-    if (migrate(vault)) { persist(vault, password); pendingFiles.clear(); }
+    let opened;
+    try { opened = open(JSON.parse(fs.readFileSync(vaultPath(), 'utf8')), secret); }
+    catch { lockVault(); throw new Error('Could not unlock. Check the password or vault file.'); }
+    vault = opened.value; keyring = opened.ring;
+    const weakKdf = keyring.kdf.N < KDF.N;
+    if (weakKdf) { keyring.key.fill(0); keyring = newKeyring(secret); }
+    if (migrate(vault) || weakKdf) { persist(vault); pendingFiles.clear(); }
     writeReminders(); maybeAutoBackup();
     return forRenderer(vault);
   });
@@ -354,16 +375,20 @@ if (primaryInstance) app.whenReady().then(() => {
     if (!value || !Array.isArray(value.profiles) || !Array.isArray(value.items)) throw new Error('Invalid CARE data.');
     const next = { ...value, dataKey: vault.dataKey };
     if (JSON.stringify(next).length > 100_000_000) throw new Error('Vault data limit reached.');
-    persist(next, password); vault = next;
+    persist(next); vault = next;
     for (const id of referencedFiles(vault)) pendingFiles.delete(id);
     cleanupFiles(); writeReminders(); maybeAutoBackup();
     return true;
   });
   ipcMain.handle('change-password', (_e, current, next) => {
     ensureUnlocked();
-    if (current !== password) throw new Error('The current password is not correct.');
+    if (typeof current !== 'string' || !timingSafeEqual(deriveKey(current, keyring.salt, keyring.kdf), keyring.key)) throw new Error('The current password is not correct.');
     checkSecret(next);
-    persist(vault, next); password = next; return true;
+    const previous = keyring;
+    keyring = newKeyring(next);
+    try { persist(vault); } catch (err) { keyring.key.fill(0); keyring = previous; throw err; }
+    previous.key.fill(0);
+    return true;
   });
   ipcMain.handle('lock', () => { lockVault(); return true; });
   ipcMain.handle('backup', async () => {
@@ -460,7 +485,7 @@ if (primaryInstance) app.whenReady().then(() => {
     ensureUnlocked();
     const { canceled, filePath } = await dialog.showSaveDialog(win, { defaultPath: 'CARE-appointment.ics', filters: [{ name: 'Calendar event', extensions: ['ics'] }] });
     if (canceled) return false;
-    const esc = s => String(s || '').replace(/\\/g, '\\\\').replace(/\r?\n/g, '\\n').replace(/[,;]/g, '\\$&');
+    const esc = s => String(s || '').replace(/\\/g, '\\\\').replace(/\r\n|\r|\n/g, '\\n').replace(/[,;]/g, '\\$&');
     const stamp = s => new Date(s).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
     // RFC 5545 caps lines at 75 bytes; longer lines continue on the next line after a space.
     const fold = line => { let out = '', len = 0; for (const ch of line) { const n = Buffer.byteLength(ch); if (len + n > 74) { out += '\r\n '; len = 1; } out += ch; len += n; } return out; };
