@@ -27,10 +27,13 @@
         <button class="nav-item active" data-page="dashboard"><span class="nav-icon" data-icon="home"></span><span>Dashboard</span></button>
         <button class="nav-item" data-page="profiles"><span class="nav-icon" data-icon="users"></span><span>Care profiles</span></button>
         <button class="nav-item" data-page="caregiver"><span class="nav-icon" data-icon="user"></span><span>My caregiver profile</span></button>
+        <button class="nav-item" data-page="agenda"><span class="nav-icon" data-icon="agenda"></span><span>Week agenda</span></button>
         <div class="sidebar-label sidebar-label-inner">CARE RECORDS</div>
         <button class="nav-item" data-page="documents"><span class="nav-icon" data-icon="file"></span><span>Documents</span></button>
         <button class="nav-item" data-page="emails"><span class="nav-icon" data-icon="mail"></span><span>Saved emails</span></button>
         <button class="nav-item" data-page="medical"><span class="nav-icon" data-icon="pulse"></span><span>Medical</span></button>
+        <button class="nav-item" data-page="medications"><span class="nav-icon" data-icon="pill"></span><span>Medications</span></button>
+        <button class="nav-item" data-page="journal"><span class="nav-icon" data-icon="book"></span><span>Care journal</span></button>
         <button class="nav-item" data-page="finances"><span class="nav-icon" data-icon="wallet"></span><span>Finances</span></button>
         <button class="nav-item" data-page="contacts"><span class="nav-icon" data-icon="contact"></span><span>Contacts</span></button>
         <button class="nav-item" data-page="tasks"><span class="nav-icon" data-icon="check"></span><span>Tasks & reminders</span></button>
@@ -54,18 +57,46 @@
     </main>
   </div>
 
-  <div class="modal-backdrop hidden" id="entryModal">
+  <div class="modal-backdrop hidden" id="passwordModal" role="dialog" aria-modal="true" aria-labelledby="passwordHeading">
+    <form class="modal" id="passwordForm">
+      <h2 id="passwordHeading">Change vault password</h2>
+      <label for="pwCurrent">Current password</label><input id="pwCurrent" type="password" required autocomplete="current-password" />
+      <label for="pwNew">New password (at least 12 characters)</label><input id="pwNew" type="password" required minlength="12" autocomplete="new-password" />
+      <label for="pwConfirm">Type the new password again</label><input id="pwConfirm" type="password" required autocomplete="new-password" />
+      <p class="form-note">Backups you saved earlier still open with the old password. Save a new backup after changing it.</p>
+      <p id="pwError" class="form-error" role="alert"></p>
+      <div class="modal-actions"><button class="ghost-btn" id="cancelPassword" type="button">Cancel</button><button class="primary-btn" type="submit">Change password</button></div>
+    </form>
+  </div>
+
+  <div class="modal-backdrop hidden" id="entryModal" role="dialog" aria-modal="true" aria-labelledby="entryHeading">
     <form class="modal" id="entryForm">
       <h2 id="entryHeading">Add record</h2>
       <label id="entryNameLabel" for="entryName">Title</label>
       <input id="entryName" required maxlength="200" />
       <div id="relationshipField"><label id="relationshipLabel" for="entryRelationship">Relationship</label><input id="entryRelationship" maxlength="100" /></div>
-      <div id="dateField"><label for="entryDate">Date / due date (optional)</label><input id="entryDate" type="date" /></div>
-      <div id="contactField"><label for="entryContact">Phone or email (optional)</label><input id="entryContact" maxlength="200" /></div>
+      <div id="kindField"><label for="entryKind">Type of note</label><select id="entryKind"></select></div>
+      <div id="dateField"><label id="entryDateLabel" for="entryDate">Date (optional)</label><input id="entryDate" type="date" /></div>
+      <div id="repeatField"><label for="entryRepeat">Repeat</label><select id="entryRepeat"></select></div>
+      <div id="medFields">
+        <div class="field-row"><div><label for="entryDose">Dose</label><input id="entryDose" maxlength="100" placeholder="e.g. 10 mg, 1 tablet" /></div><div><label for="entrySchedule">When to take it</label><input id="entrySchedule" maxlength="200" placeholder="e.g. every morning with food" /></div></div>
+        <div class="field-row"><div><label for="entryPrescriber">Prescribed by</label><input id="entryPrescriber" maxlength="200" /></div><div><label for="entryPharmacy">Pharmacy</label><input id="entryPharmacy" maxlength="200" /></div></div>
+        <label class="check-label"><input id="entryStopped" type="checkbox" /> No longer taking this medicine</label>
+      </div>
+      <div id="contactField"><label id="entryContactLabel" for="entryContact">Phone or email (optional)</label><input id="entryContact" maxlength="200" /></div>
+      <div id="emergencyField"><label class="check-label"><input id="entryEmergency" type="checkbox" /> List on the emergency sheet</label></div>
+      <div id="birthField"><label for="entryBirth">Date of birth (optional)</label><input id="entryBirth" type="date" /></div>
+      <fieldset id="healthFields" class="health-fields">
+        <legend>Health facts <small>· shown on the emergency sheet</small></legend>
+        <label for="entryAllergies">Allergies</label><input id="entryAllergies" maxlength="500" placeholder="e.g. Penicillin, peanuts. Write &quot;None&quot; if none." />
+        <label for="entryConditions">Medical conditions</label><textarea id="entryConditions" rows="2" maxlength="2000"></textarea>
+        <div class="field-row"><div><label for="entryBloodType">Blood type</label><input id="entryBloodType" maxlength="20" /></div><div><label for="entryDirectives">Advance directive / DNR kept at</label><input id="entryDirectives" maxlength="300" /></div></div>
+        <label for="entryInsurance">Insurance (plan and member ID)</label><textarea id="entryInsurance" rows="2" maxlength="1000"></textarea>
+      </fieldset>
       <label id="entryDetailLabel" for="entryDetail">Details / notes</label>
       <textarea id="entryDetail" rows="4" maxlength="10000"></textarea>
       <div id="photoField"><div id="photoPreview" class="photo-preview"></div><div><button id="photoBtn" class="ghost-btn" type="button"><span data-icon="camera"></span> Choose photo</button><button id="removePhotoBtn" class="text-btn" type="button">Remove photo</button><small>PNG, JPEG, or WebP · up to 3 MB</small></div></div>
-      <div id="attachmentField"><button id="attachBtn" class="ghost-btn" type="button">Attach file (up to 5 MB)</button><small id="attachmentStatus"></small></div>
+      <div id="attachmentField"><button id="attachBtn" class="ghost-btn" type="button">Attach file (up to 25 MB)</button><small id="attachmentStatus"></small><button id="removeAttachBtn" class="text-btn" type="button">Remove file</button></div>
       <div class="modal-actions"><button class="ghost-btn" id="cancelEntry" type="button">Cancel</button><button class="primary-btn" type="submit">Save</button></div>
     </form>
   </div>

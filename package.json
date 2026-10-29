@@ -1,6 +1,6 @@
 {
   "name": "care-caregiver-organizer",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "private": true,
   "description": "Local caregiver organizer",
   "author": "CARE",
@@ -23,7 +23,8 @@
       "app.js",
       "main.js",
       "preload.js",
-      "assets/care-icon.png"
+      "assets/care-icon.png",
+      "assets/care-icon.ico"
     ],
     "directories": {
       "output": "dist"
